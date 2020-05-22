@@ -1,35 +1,65 @@
-import os
+from pathlib import Path
+from typing import *
 
 
-def abs_create_path(path: str) -> str:
-    """
-    Makes sure that the given path is absolute and does exist.
+def pstr(data: Union[str, Path]) -> Path:
+    if type(data) is str:
+        return Path(data)
+    elif type(data) is Path:
+        return data
     
-    :param path: The path
-    :type path: str
-    
-    :return: Absolute path
-    :rtype: str
-    
-    :raises:
-        FileNotFoundError: If the path couldn`t be found
-    """
-    absolute_path = path if os.path.isabs(path) else os.path.abspath(path)
-    
-    if not os.path.exists(absolute_path):
-        raise FileNotFoundError(f"Path \"{absolute_path}\" couldn`t be found!")
-    
-    return path
+    try:
+        raise ValueError(f'"{str(data)[:10]}"... can`t be used as path!')
+    except TypeError:
+        raise ValueError(f'The given value can`t be used as a path!')
 
 
-def abs_path(*args) -> str:
-    """
-    Joins args to paths and makes it absolute.
+def pstrnone(data) -> Optional[Path]:
+    if data is None:
+        return None
+    return pstr(data)
+
+
+def pstrcwd(data) -> Path:
+    if data is None:
+        return Path.cwd()
+    return pstr(data)
+
+
+def split_nth(data: str, split: str, n: int) -> Generator[str, None, None]:
+    splitted = data.split(split)
+    length = len(splitted)
     
-    :param args: *args
-    :type args: Any
+    for i in range(0, length, n):
+        if i + n < length:
+            # Get next elements
+            yield split.join(
+                (splitted[i + j] for j in range(n))
+            )
+
+
+def read_only_properties(*attrs):
+    def class_rebuilder(cls):
+        "The class decorator"
+        
+        class NewClass(cls):
+            "This is the overwritten class"
+            
+            def __setattr__(self, name, value):
+                if name not in attrs:
+                    pass
+                elif name not in self.__dict__:
+                    pass
+                else:
+                    raise AttributeError("Can't modify {}".format(name))
+                
+                super().__setattr__(name, value)
+        
+        return NewClass
     
-    :return: Absolute path
-    :rtype: str
-    """
-    return os.path.abspath(os.path.join(*args))
+    return class_rebuilder
+
+
+def prompt(message: str) -> bool:
+    value = input(message + ' "y" for yes. ').lower()
+    return value in {"y", }

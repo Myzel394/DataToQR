@@ -1,178 +1,110 @@
+#!/usr/bin/env python
+__author__ = "Miguel Krasniqi"
+
 import base64
 import json
 import logging
-import os
-from multiprocessing import freeze_support, Pool
-from typing import Optional
+import re
+from pathlib import Path
 
-import cv2
-from pyzbar.pyzbar import decode, Decoded
-from tqdm import tqdm
+from cv2.cv2 import VideoCapture
+from pyzbar.pyzbar import decode
 
-from constants import FIRST_DELIMITER, format, SECOND_DELIMITER
-
-# Logging
-logging.root.setLevel(logging.NOTSET)
-
-"""
-# Doesn`t work. See extract_video multiline comment at the bottom
-def _extract_video__handle_thread(current_data: Tuple[int, np.ndarray, np.array]):
-    "\""Inserts the image data at the specific index"\""
-    index, data, data_array = current_data
-    
-    data_array[index] = decode(data)[0].data.decode("utf-8")"""
+import constants
+from data.decoders import DecoderType
+from data.encoders import EncoderType
+from data.encoders_list import ALL_ENCODERS
+from data.typing_types import *
+from exceptions import DecoderFailed
+from utils import split_nth
 
 
-def _write_video__write__handle_thread(passed: tuple):
-    """Writes the file. Thread handler for write_video"""
-    data: str
-    delimiter: str
-    
-    unsplitted_data, delimiter = passed
-    
-    # -<()>- # Extract data # -<()>- #
-    raw_information, raw_data = unsplitted_data.split(delimiter)
-    
-    information = json.loads(
-        base64.b64decode(raw_information).decode("utf-8")
-    )
-    data = base64.b64decode(raw_data).decode("utf-8")
-    
-    # -<()>- # Get information # -<()>- #
-    path = information[format["path"]]
-    encoding = information[format["encoding"]]
-    folder_path = os.path.dirname(path)
-    
-    # Get kwargs
-    kwargs = {}
-    if encoding:
-        kwargs["encoding"] = encoding
-    
-    # -<()>- # Create file # -<()>- #
-    
-    os.makedirs(folder_path, exist_ok=True)
-    
-    with open(path, "w", **kwargs) as file:
-        file.write(data)
-
-
-class Decoder:
+class BaseUnQRizer:
     @staticmethod
-    def build_message(msg: str) -> str:
-        """
-        Builds the complete message.
+    def _find_encoder(name: str, encoders: Iterable[EncoderType]) -> Optional[EncoderType]:
+        for encoder in encoders:
+            if encoder.get_encoder_id() == name:
+                return encoder
         
-        :param msg: The message
-        :type msg: str
-        
-        :return: New, built message
-        :rtype: str
-        """
-        return "[Decode Video] " + msg
+        return
     
-    @staticmethod
-    def extract_video(
-            video_path: str,
-            threads: Optional[int] = None
-    ):
-        """
-        Extracts the data from a given video.
+    @classmethod
+    def extract_package(cls, package: str, encoders: Iterable[EncoderType]) -> PackedDataTuple:
+        # Extract data
+        encoded_data, encoded_information, encoder_string = package.split(constants.DELIMETER)
+        data: str = base64.b64decode(encoded_data).decode(constants.ENCODE_TYPE)
+        json_information: str = base64.b64decode(encoded_information)
+        information: dict = json.loads(json_information)
+        encoder: EncoderType = cls._find_encoder(encoder_string, encoders)
         
-        :param video_path: The path to the video
-        :type video_path: str
+        if encoder is None:
+            raise DecoderFailed(
+                f'Couldn`t find the decoder for "{encoder_string}". Try adding more encoders to `encoders`. If '
+                f'you passed all encoders, the file might be broken.')
         
-        :param threads: How many threads should be used. Currently unavailable. Will be add in the future. If None,
-        default value will be chosen. default: `os.cpu_count()`
-        :type threads: int, None
-        
-        :return: data
-        :rtype: str
-        """
-        # Setup
-        threads = threads or os.cpu_count()
-        
-        cap = cv2.VideoCapture(video_path)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        frames = []
-        data = []
-        
-        # Collecting video frames
-        for _ in tqdm(range(frame_count), total=frame_count, desc=Decoder.build_message("Collecting video frames")):
-            image_array = cap.read()[1]
-            
-            frames.append(image_array)
-        
-        for image_array in tqdm(frames, desc=Decoder.build_message("Decoding frames")):
-            decoded_image: Decoded
-            decoded_image = decode(image_array)[0]
-            
-            data.append(decoded_image.data.decode("utf-8"))
-        
-        return "".join(data)
-        
-        """
-        # If someone know how to get this working, please let me know
-        
-        data_array = Manager().list([""]) * frame_count
-        
-        with Pool(threads) as pool:
-            # Saving index and data to pass it to the thread handler.
-            # Saving data_array to access it in the the thread handler
-            pool_data = [[i, value, data_array] for i, value in enumerate(frames)]
-            
-            list(
-                tqdm(
-                    pool.imap(_extract_video__handle_thread, pool_data),
-                    total=len(pool_data),
-                    desc=self.build_message("Decoding QR-Codes")
-                )
-            )
-        
-        return "".join(data_array)"""
+        return data, information, encoder
     
-    @staticmethod
-    def write_files(
+    @classmethod
+    def get_packages_from_data(
+            cls,
             data: str,
-            first_delimiter: str = FIRST_DELIMITER,
-            second_delimiter: str = SECOND_DELIMITER,
-            threads: Optional[int] = None
-    ):
-        """
-        Writes files from the given data.
-        
-        :param data: The data
-        :type data: str
-        
-        :param first_delimiter: The delimiter that should be used as first_delimiter for the data
-        :type first_delimiter: str
-        
-        :param second_delimiter: The delimiter that should be used as second_delimiter for the data
-        :type second_delimiter: str
-        
-        :param threads: How many threads should be used. If None, default value will be chosen. default:
-        `os.cpu_count()`
-        :type threads: int, None
-        """
-        
-        # Setup
-        threads = threads or os.cpu_count()
-        
-        data_list = data[:-1].split(FIRST_DELIMITER)
-        pool_data = [
-            [data, second_delimiter] for data in data_list
-        ]
-        
-        with Pool(threads) as pool:
-            freeze_support()
+            encoders: Iterable[EncoderType] = ALL_ENCODERS,
+            skip_error: bool = True
+    ) -> Generator[PackedDataTuple, None, None]:
+        for package in split_nth(
+                data + constants.DELIMETER,  # Adding delimiter because it's removed normally
+                constants.DELIMETER,
+                re.compile(constants.DATA_STRING_REVERSE).groups
+        ):
+            try:
+                data, information, encoder = cls.extract_package(package, encoders)
+            except DecoderFailed as e:
+                if skip_error:
+                    logging.warning("A package couldn`t be extracted. Here`s the exception: " + str(e))
+                    continue
+                else:
+                    raise e
             
-            list(
-                tqdm(
-                    pool.imap(_write_video__write__handle_thread, pool_data),
-                    total=len(pool_data),
-                    desc=Decoder.build_message("Writing files")
-                )
-            )
+            yield data, information, encoder
+    
+    @staticmethod
+    def decode_qr(opened_image) -> str:
+        decoded = decode(opened_image)
+        
+        return decoded[0].data.decode("utf-8")
+    
+    @staticmethod
+    def _get_video_frames(cap: VideoCapture):
+        success, img = cap.read()
+        
+        while success:
+            yield img
             
-            pool.close()
-            pool.join()
+            success, img = cap.read()
+    
+    @classmethod
+    def get_data_from_video(cls, path: Union[Path, str]) -> str:
+        cap = VideoCapture(str(path))
+        found = []
+        
+        for frame in cls._get_video_frames(cap):
+            data = cls.decode_qr(frame)
+            found.append(data)
+        
+        return "".join(found)
+    
+    @staticmethod
+    def handle_data(data: str, information: JsonSerializable, decoder: DecoderType):
+        instance = decoder(data, information)
+        
+        instance.handle_data()
+
+
+class SimpleUnQRizer(BaseUnQRizer):
+    @classmethod
+    def decode_video(cls, file: Union[Path, str]):
+        data = cls.get_data_from_video(file)
+        packages = list(cls.get_packages_from_data(data))
+        
+        for package in packages:
+            cls.handle_data(package[0], package[1], package[2].decoder)

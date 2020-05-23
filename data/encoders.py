@@ -5,20 +5,22 @@ import base64
 import json
 import re
 from fnmatch import fnmatch
-from pathlib import Path
 
 import magic
 
 import constants
 from checks import is_base64, is_json_serializable
-from data.decoders import FileDecoder, TextDecoder
+from data.decoders import BytesDecoder, FileDecoder, TextDecoder
 from data.typing_types import *
 from exceptions import EncoderError
+from utils import pstrnone
 
 mime = magic.Magic(mime=True)
 
 
 class BaseDataEncoderInterface:
+    decoder = None
+    
     @staticmethod
     def encode_string(data: str) -> str:
         return base64.b64encode(data.encode(constants.ENCODE_TYPE)).decode(constants.ENCODE_TYPE)
@@ -86,7 +88,7 @@ class FileEncoder(BaseDataEncoderInterface):
     decoder = FileDecoder
     
     @classmethod
-    def can_encode(cls, file: Union[Path, str]) -> bool:
+    def can_encode(cls, file: PathStr) -> bool:
         try:
             mime_type = mime.from_file(str(file))
         except:
@@ -97,44 +99,33 @@ class FileEncoder(BaseDataEncoderInterface):
     def __init__(self, path: Path, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if not path.exists():
-            EncoderError(f'Path "{path}" does not exist!')
+            raise EncoderError(f'Path "{path}" does not exist!')
         
         self.path = path.absolute()
+        
+        if not self.can_encode(self.path):
+            raise ValueError(f'"{self.__class__.__name__}" doesn`t support that mime_type!')
     
     def encode(self, encoding: str = "utf-8") -> str:
-        if not self.can_encode(self.path):
-            raise EncoderError(
-                f'File "{self.path}" can`t be encoded. Probably it`s mime_type is not supported or the file is broken.')
-        
         with self.path.open("r", encoding=encoding) as file:
             data = file.read()
         
         return self.encode_string(data)
     
-    def get_information(self, encoding: str = "utf-8") -> JsonSerializable:
+    def get_information(self, encoding: str = "utf-8", relative_to: Optional[PathStr] = None) -> JsonSerializable:
+        # Constrain values
+        relative_to = pstrnone(relative_to)
+        kwargs = {}
+        
+        if relative_to is not None:
+            kwargs["path"] = "\\" + str(self.path.relative_to(relative_to))
+        else:
+            kwargs["path"] = str(self.path.absolute())
+        
         return {
-            "filename": self.path.name,
-            "mime": mime.from_file(str(self.path)),
-            "encoding": encoding
+            "encoding": encoding,
+            **kwargs
         }
-
-
-class RelativeFileEncoder(FileEncoder):
-    def get_information(self, relative_to: Path) -> JsonSerializable:
-        data = super().get_information()
-        data.update({
-            "relative_path": str(self.path.relative_to(relative_to))
-        })
-        return data
-
-
-class AbsoluteFileEncoder(FileEncoder):
-    def get_information(self) -> JsonSerializable:
-        data = super().get_information()
-        data.update({
-            "absolute_path": str(self.path)
-        })
-        return data
 
 
 class TextEncoder(BaseDataEncoderInterface):
@@ -147,8 +138,22 @@ class TextEncoder(BaseDataEncoderInterface):
         super().__init__(*args, **kwargs)
         self.text = text
     
-    def encode(self, **opts) -> str:
+    def encode(self, ) -> str:
         return self.encode_string(self.text)
+
+
+class BytesEncoder(FileEncoder):
+    """
+    Encodes a file from it`s bytes
+    """
+    decoder = BytesDecoder
+    
+    def encode(self, encoding: str = "utf-8") -> str:
+        with self.path.open("rb") as image:
+            data = image.read()
+        
+        data = base64.b64encode(data)
+        return data.decode(encoding)
 
 
 EncoderType = Type[BaseDataEncoderInterface]

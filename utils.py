@@ -1,11 +1,13 @@
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import *
 
+from data.typing_types import PathStr
 
-def pstr(data: Union[str, Path]) -> Path:
+
+def pstr(data: PathStr) -> Path:
     if type(data) is str:
         return Path(data)
-    elif type(data) is Path:
+    elif isinstance(data, PurePath):
         return data
     
     try:
@@ -26,16 +28,17 @@ def pstrcwd(data) -> Path:
     return pstr(data)
 
 
-def split_nth(data: str, split: str, n: int) -> Generator[str, None, None]:
-    splitted = data.split(split)
-    length = len(splitted)
+def split_nth(data: str, split: str, n: int, keep_split: True) -> Generator[str, None, None]:
+    split_data = data.split(split)
+    length = len(split_data)
+    suffix = split if keep_split else ""
     
     for i in range(0, length, n):
         if i + n < length:
             # Get next elements
             yield split.join(
-                (splitted[i + j] for j in range(n))
-            )
+                (split_data[i + j] for j in range(n))
+            ) + suffix
 
 
 def read_only_properties(*attrs):

@@ -4,11 +4,12 @@ __author__ = "Miguel Krasniqi"
 from .encoders import *
 
 FILE_ENCODERS = (
-    RelativeFileEncoder,
+    FileEncoder,
+    BytesEncoder
 )
 
 ALL_ENCODERS = (
-    RelativeFileEncoder,
-    AbsoluteFileEncoder,
+    FileEncoder,
+    BytesEncoder,
     TextEncoder,
 )

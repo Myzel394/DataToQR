@@ -11,8 +11,8 @@ import magic
 import constants
 from checks import is_base64, is_json_serializable
 from data.decoders import BytesDecoder, FileDecoder, TextDecoder
-from data.typing_types import *
 from exceptions import EncoderError
+from typing_types import *
 from utils import pstrnone
 
 mime = magic.Magic(mime=True)
@@ -106,8 +106,8 @@ class FileEncoder(BaseDataEncoderInterface):
         if not self.can_encode(self.path):
             raise ValueError(f'"{self.__class__.__name__}" doesn`t support that mime_type!')
     
-    def encode(self, encoding: str = "utf-8") -> str:
-        with self.path.open("r", encoding=encoding) as file:
+    def encode(self, file_encoding: str = "utf-8") -> str:
+        with self.path.open("r", encoding=file_encoding) as file:
             data = file.read()
         
         return self.encode_string(data)
@@ -148,12 +148,12 @@ class BytesEncoder(FileEncoder):
     """
     decoder = BytesDecoder
     
-    def encode(self, encoding: str = "utf-8") -> str:
+    def encode(self, data_encoding: str = "utf-8") -> str:
         with self.path.open("rb") as image:
             data = image.read()
         
         data = base64.b64encode(data)
-        return data.decode(encoding)
+        return data.decode(data_encoding)
 
 
 EncoderType = Type[BaseDataEncoderInterface]

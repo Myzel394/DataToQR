@@ -14,8 +14,8 @@ import constants
 from data.decoders import DecoderType
 from data.encoders import EncoderType
 from data.encoders_list import ALL_ENCODERS
-from data.typing_types import *
 from exceptions import DecoderFailed
+from typing_types import *
 from utils import pstr, pstrnone, split_nth
 
 
@@ -124,7 +124,7 @@ class HandleDataExtractor(BaseDataExtractor):
     @classmethod
     def handle_video(
             cls,
-            file: Union[Path, str],
+            file: PathStr,
             encoders: Iterable[EncoderType] = ALL_ENCODERS,
             **kwargs
     ) -> None:
@@ -177,12 +177,11 @@ class HandleDataExtractor(BaseDataExtractor):
             success, img = cap.read()
     
     @classmethod
-    def decode_video(cls, path: Union[Path, str]) -> str:
+    def decode_video(cls, path: PathStr) -> str:
         """Decodes a video and returns it`s data"""
         cap = VideoCapture(str(path))
         frames = int(cap.get(CAP_PROP_FRAME_COUNT))
         found = []
-        
         for frame in tqdm(cls._get_video_frames(cap), desc="Reading video", total=frames):
             data = cls.decode_qr(frame)
             found.append(data)

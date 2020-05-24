@@ -1,7 +1,8 @@
+import re
 from pathlib import Path, PurePath
 from typing import *
 
-from data.typing_types import PathStr
+from typing_types import PathStr, SimpleBuiltinTypes
 
 
 def pstr(data: PathStr) -> Path:
@@ -64,5 +65,43 @@ def read_only_properties(*attrs):
 
 
 def prompt(message: str) -> bool:
-    value = input(message + ' "y" for yes. ').lower()
+    value = input("\n" + message + ' "y" for yes. ').lower()
     return value in {"y", }
+
+
+int_regex = re.compile("^[+-]?\d+$")
+float_regex = re.compile("^[+-]?\d*[.,]\d*$")
+
+
+def string_to_type(value: str) -> SimpleBuiltinTypes:
+    # None check
+    if value == "None":
+        return None
+    
+    # Boolean check
+    if value == "True":
+        return True
+    if value == "False":
+        return False
+    
+    # Digit check
+    if re.match(int_regex, value):
+        return int(value)
+    if re.match(float_regex, value):
+        return float(value)
+    
+    return value
+
+
+def rename_keys(value: str) -> str:
+    return value.lstrip("-").replace("-", "_")
+
+
+def parse_args(args) -> Dict[str, SimpleBuiltinTypes]:
+    split = [x.split("=") for x in args]
+    found = {}
+    
+    for key, value in split:
+        found[rename_keys(key)] = string_to_type(value)
+    
+    return found

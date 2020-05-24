@@ -19,8 +19,8 @@ from tqdm import tqdm
 import constants
 from data.encoders import EncoderType
 from data.encoders_list import ALL_ENCODERS
-from data.typing_types import Kwargs, PathStr
-from exceptions import EncoderFailed
+from exceptions import EncoderError, EncoderFailed
+from typing_types import Kwargs, PathStr
 from utils import pstr, pstrnone
 
 
@@ -63,6 +63,13 @@ class BaseDataInsertor:
             try:
                 instance = Klaas(targeted)
                 data = instance.build_qr_data(opts, information_opts)
+            except EncoderError:
+                logging.warning(f'There`s an {EncoderError.__name__} error with "{Klaas.__name__}"')
+                
+                if show_traceback:
+                    traceback.print_exc()
+                
+                continue
             except:
                 logging.warning(f'Encoder "{Klaas.__name__}" didn`t work.')
                 
@@ -144,6 +151,7 @@ class VideoDataInsertor(BaseDataInsertor):
         temp = pstrnone(temp)
         if temp is None:
             temp = Path.cwd().joinpath("temp")
+        temp.mkdir(exist_ok=True, parents=True)
         if skip_existing:
             compiled = re.compile(image_regex)
             skip: List[str] = [re.match(compiled, file.name).group(1) for file in temp.glob("*.png")]
@@ -160,6 +168,7 @@ class VideoDataInsertor(BaseDataInsertor):
             if str(i) not in skip
         ]
         
+        logging.info(f'Using {threads} Threads to create frames.')
         with Pool(threads) as pool:
             list(
                 tqdm(
@@ -176,7 +185,7 @@ class VideoDataInsertor(BaseDataInsertor):
             output: Optional[Path] = None,
             *,
             temp: Optional[PathStr] = None,
-            clear_temp: bool = True,
+            clear_temp: bool = False,
             
             ffmpeg_location: Path = Path("C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe"),
             ffmpeg_opts: Optional[dict] = None,
@@ -229,12 +238,13 @@ class VideoDataInsertor(BaseDataInsertor):
         # Create video
         logging.info("The video will be created now, wait until it is finished.")
         
-        subprocess.Popen([
+        process = subprocess.Popen([
             ffmpeg_location,
             "-i", temp.joinpath("image-%d.png").absolute(),
             *use_opts,
             output.absolute()
         ])
+        process.communicate()
 
 
 class FileDataInsertor(VideoDataInsertor):
@@ -260,6 +270,32 @@ class FileDataInsertor(VideoDataInsertor):
     ) -> str:
         # Constrain values
         data = "".join(list(cls.collect_data_from_files(files, **kwargs)))
+        
+        cls.create_video(data, output)
+        
+        return data
+    
+    @classmethod
+    def encode_multiple(
+            cls,
+            targets: Iterator[PathStr],
+            output: Optional[PathStr] = None,
+            **kwargs
+    ) -> str:
+        # Constrain values
+        targets: Iterator[Path] = map(lambda x: pstr(x), targets)
+        
+        # Collect data
+        data = []
+        for target in targets:
+            if target.is_dir():
+                temp = cls.encode_folder(target, **kwargs)
+            else:
+                temp = cls.encode_file(target, **kwargs)
+            
+            data.append(temp)
+        
+        data = "".join(data)
         
         cls.create_video(data, output)
         

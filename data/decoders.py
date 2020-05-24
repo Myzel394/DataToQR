@@ -7,22 +7,26 @@ from pathlib import Path
 from typing import *
 
 import constants
-from data.typing_types import JsonSerializable, PathStr
 from exceptions import DecoderError
+from typing_types import JsonSerializable, PathStr
 from utils import prompt, pstr, read_only_properties
 
 
-@read_only_properties("information", "data", )
+@read_only_properties("information", "data", "__raw_data")
 class BaseDataDecoderInterface:
     @staticmethod
     def get_data(raw: str) -> Any:
         return base64.b64decode(raw).decode(constants.ENCODE_TYPE)
     
     def __init__(self, raw_data: str, information: JsonSerializable):
+        self.__raw_data = raw_data
         self.data = self.get_data(raw_data)
         self.information = information
     
-    def handle_data(self, *, log: bool = False):
+    def __repr__(self) -> str:
+        return f'<{self.__class__.__name__} with raw="{self.__raw_data[:20]}"...>'
+    
+    def handle_data(self, *, log: bool = False) -> None:
         pass
 
 
@@ -39,8 +43,8 @@ class FileDecoder(BaseDataDecoderInterface):
         if not ignore_perms and path.exists():
             # File already exists
             if not prompt(
-                    f'"{self}" wants to create a file that already exists ("{path.absolute()}"). Do you want to '
-                    f'proceed?'):
+                    f'"{self}" wants to create a file that already exists ("{path}"; absolute="{path.absolute()}"). '
+                    f'Do you want to proceed?'):
                 return
         
         if not path.is_absolute():
@@ -54,6 +58,8 @@ class FileDecoder(BaseDataDecoderInterface):
                     base = Path.cwd()
             
             path = base.joinpath(str(path)[1:])
+        else:
+            base = None
         
         # Create file and write data
         path.parent.mkdir(exist_ok=True, parents=True)
@@ -61,7 +67,10 @@ class FileDecoder(BaseDataDecoderInterface):
             file.write(self.data)
         
         if log:
-            logging.info(f'Created file "{str(path.relative_to(base))}"')
+            if base is not None:
+                logging.info(f'Created file "{str(path.relative_to(base))}"')
+            else:
+                logging.info(f'Created file "{str(path.absolute())}"')
     
     @staticmethod
     def validate_path(input: str) -> Optional[Path]:
@@ -74,7 +83,7 @@ class FileDecoder(BaseDataDecoderInterface):
     def prompt_path(self, path: PathStr) -> Path:
         string = input(f'"{self}" want`s to create a file with a relative path (relative path: "{str(path)}"). '
                        f'Please provide a base path, otherwise the current working directory (cwd) will be '
-                       f'used.')
+                       f'used. (You can skip this by providing the `base_path` variable)')
         base = self.validate_path(string)
         
         while base is None:
@@ -82,7 +91,7 @@ class FileDecoder(BaseDataDecoderInterface):
             
             base = self.validate_path(string)
         
-        return path
+        return base
 
 
 class TextDecoder(BaseDataDecoderInterface):

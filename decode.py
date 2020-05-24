@@ -3,6 +3,7 @@ __author__ = "Miguel Krasniqi"
 
 import base64
 import json
+import logging
 import re
 from operator import itemgetter
 
@@ -16,7 +17,7 @@ from data.encoders import EncoderType
 from data.encoders_list import ALL_ENCODERS
 from exceptions import DecoderFailed
 from typing_types import *
-from utils import pstr, pstrnone, split_nth
+from utils import pstr, pstrnone, split_modulo, split_nth
 
 
 class BaseDataExtractor:
@@ -24,12 +25,12 @@ class BaseDataExtractor:
     def _find_encoder(name: str, encoders: Iterable[EncoderType]) -> EncoderType:
         """
         Finds the encoder with a given id `name`
-        
+
         :param name: The id name
         :param encoders: For what encoders should be searched
-        
+
         :return: The encoder
-        
+
         :raises:
             DecoderFailed: No encoder found
         """
@@ -117,7 +118,7 @@ class HandleDataExtractor(BaseDataExtractor):
         """Handles packages. Also shows a tqdm progressbar"""
         list_data = list(data)
         
-        for single_data in tqdm(list_data, desc="Handling data", total=len(list_data)):
+        for single_data in list_data:
             data, information, encoder = itemgetter("data", "information", "encoder")(single_data)
             cls.handle_ready_data(data, information, encoder.decoder, **kwargs)
     
@@ -128,7 +129,7 @@ class HandleDataExtractor(BaseDataExtractor):
             encoders: Iterable[EncoderType] = ALL_ENCODERS,
             **kwargs
     ) -> None:
-        """Handles a video"""
+        """Decodes data first and handles it then"""
         data = cls.decode_video(file)
         cls.handle_raw_data(data, encoders=encoders, **kwargs)
     
@@ -179,14 +180,56 @@ class HandleDataExtractor(BaseDataExtractor):
     @classmethod
     def decode_video(cls, path: PathStr) -> str:
         """Decodes a video and returns it`s data"""
+        # Constrain values
+        path = pstr(path)
+        
+        # Video
         cap = VideoCapture(str(path))
         frames = int(cap.get(CAP_PROP_FRAME_COUNT))
-        found = []
+        found: List[str] = []
+        
         for frame in tqdm(cls._get_video_frames(cap), desc="Reading video", total=frames):
             data = cls.decode_qr(frame)
             found.append(data)
         
         return "".join(found)
+    
+    @classmethod
+    def handle_video_instantly(
+            cls,
+            path: PathStr,
+            skip_error: bool = True,
+            **kwargs
+    ) -> None:
+        """Decodes a video and handles instantly. If you want to decode a video and handle its data, use this. No
+        data will be returned. Only works with like 95% of the data. I`m still searching for a solution, if you know
+        one please tell me."""
+        # Constrain values
+        path = pstr(path)
+        
+        # Video
+        cap = VideoCapture(str(path))
+        frames = int(cap.get(CAP_PROP_FRAME_COUNT))
+        handle_every = re.compile(constants.DATA_STRING_REVERSE).groups
+        found: List[str] = []
+        
+        for frame in tqdm(cls._get_video_frames(cap), desc="Handling video", total=frames):
+            data = cls.decode_qr(frame)
+            found.append(data)
+            
+            # Handle and reset
+            if len((split_data := "".join(found).split(constants.DELIMITER))) >= handle_every:
+                data_list, found = split_modulo(split_data, handle_every)
+                for data in data_list:
+                    try:
+                        cls.handle_raw_data(constants.DELIMITER.join(data) + constants.DELIMITER, **kwargs)
+                    except Exception as e:
+                        if skip_error:
+                            logging.warning("There was an error while handling some data. Original exception: " +
+                                            str(e))
+                            continue
+                        raise e
+                # Does somebody know how to handle this with multiprocessing?
 
 
 class DumpDataExtractor(BaseDataExtractor):

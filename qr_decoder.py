@@ -58,6 +58,9 @@ def parse_parser(parser: argparse.ArgumentParser) -> Kwargs:
     else:
         kwargs = {}
     
+    if (key := "base_path") not in kwargs:
+        kwargs[key] = Path.cwd()
+    
     video = Path(args["video"])
     
     if not video.exists():
@@ -80,23 +83,24 @@ def handle(**arguments):
     if log is not False and (key := "log") not in kwargs:
         kwargs[key] = log
     
-    data = HandleDataExtractor.decode_video(video)
-    
     if method == AVAILABLE_METHODS["HANDLE"]:
-        HandleDataExtractor.handle_raw_data(data, **kwargs)
-    elif method == AVAILABLE_METHODS["DUMP"]:
-        DumpDataExtractor.dump_to_file(data, **kwargs)
-    elif method == AVAILABLE_METHODS["REVIEW"]:
-        file_key = "file"
+        HandleDataExtractor.handle_video_instantly(video, **kwargs)
+    else:
+        data = HandleDataExtractor.decode_video(video, **kwargs)
         
-        if file_key not in kwargs:
-            kwargs[file_key] = str(Path.cwd().joinpath("data.json"))
-        if (key := "minify") not in kwargs:
-            kwargs[key] = False
-        
-        DumpDataExtractor.dump_to_file(data, **kwargs)
-        
-        os.startfile(kwargs[file_key])
+        if method == AVAILABLE_METHODS["DUMP"]:
+            DumpDataExtractor.dump_to_file(data, **kwargs)
+        elif method == AVAILABLE_METHODS["REVIEW"]:
+            file_key = "file"
+            
+            if file_key not in kwargs:
+                kwargs[file_key] = str(Path.cwd().joinpath("data.json"))
+            if (key := "minify") not in kwargs:
+                kwargs[key] = False
+            
+            DumpDataExtractor.dump_to_file(data, **kwargs)
+            
+            os.startfile(kwargs[file_key])
 
 
 if __name__ == "__main__":

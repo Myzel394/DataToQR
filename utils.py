@@ -1,8 +1,9 @@
+import os
 import re
 from pathlib import Path, PurePath
 from typing import *
 
-from typing_types import PathStr, SimpleBuiltinTypes
+from typing_types import Kwargs, PathStr, SimpleBuiltinTypes
 
 
 def pstr(data: PathStr) -> Path:
@@ -105,3 +106,48 @@ def parse_args(args) -> Dict[str, SimpleBuiltinTypes]:
         found[rename_keys(key)] = string_to_type(value)
     
     return found
+
+
+def create_temp(temp: Optional[PathStr]) -> Path:
+    temp = pstrnone(temp)
+    if temp is None:
+        temp = Path.cwd().joinpath("temp")
+    temp.mkdir(exist_ok=True, parents=True)
+    return temp
+
+
+def get_skip_files(regex: str, folder: PathStr, glob: str) -> Set[str]:
+    compiled = re.compile(regex)
+    return {compiled.match(file.name).group(1) for file in folder.glob(glob)}
+
+
+def get_kwargs(data) -> Kwargs:
+    if type(data) is dict:
+        return data
+    return {}
+
+
+def get_threads(value) -> int:
+    if type(value) is int:
+        return value
+    return os.cpu_count()
+
+
+def split_modulo(target: list, n: int) -> Tuple[List[list], list]:
+    target = target[::]
+    length: int = len(target)
+    biggest: int
+    
+    if length % n > 0:
+        biggest = length - (length % n)
+    else:
+        biggest = length
+    
+    modulo, remaining = target[:biggest], target[biggest:]
+    
+    return [  # List containing split list
+               [  # Content of split list
+                   modulo[i + j]
+                   for j in range(n)
+               ] for i in range(0, len(modulo), n)
+           ], remaining

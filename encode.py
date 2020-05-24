@@ -3,7 +3,6 @@ __author__ = "Miguel Krasniqi"
 
 import logging
 import os
-import re
 import shutil
 import subprocess
 import traceback
@@ -21,23 +20,10 @@ from data.encoders import EncoderType
 from data.encoders_list import ALL_ENCODERS
 from exceptions import EncoderError, EncoderFailed
 from typing_types import Kwargs, PathStr
-from utils import pstr, pstrnone
+from utils import create_temp, get_skip_files, pstr, pstrnone
 
 
 class BaseDataInsertor:
-    DEFAULT_OPTS = {
-        "version": 1,
-        "error_correction": qrcode.constants.ERROR_CORRECT_L,
-        "border": 0,
-        "box_size": 3
-    }
-    
-    DEFAULT_FFMPEG_OPTS = {
-        "-vcodec": "libx264",
-        "-framerate": "12",
-        "-preset": "slower"
-    }
-    
     @staticmethod
     def get_encoded_data(
             targeted: Any,
@@ -61,6 +47,7 @@ class BaseDataInsertor:
         """
         for Klaas in encoders:
             try:
+                # noinspection PyArgumentList
                 instance = Klaas(targeted)
                 data = instance.build_qr_data(opts, information_opts)
             except EncoderError:
@@ -117,7 +104,7 @@ class VideoDataInsertor(BaseDataInsertor):
             output = Path.cwd().joinpath("image.png")
         
         # Merge opts
-        use_opts = cls.DEFAULT_OPTS.copy()
+        use_opts = constants.DEFAULT_OPTS.copy()
         use_opts.update(opts)
         
         # Create qr code
@@ -141,22 +128,18 @@ class VideoDataInsertor(BaseDataInsertor):
             frame_opts: Optional[Kwargs] = None,
             temp: Optional[PathStr] = None,
             skip_existing: bool = True,
-            image_regex: str = "image-([\\d]+).png"
+            file_regex: str = "image-([\\d]+).png"
     ):
         # Constrain values
         if threads is None:
             threads = os.cpu_count()
         if frame_opts is None:
             frame_opts = {}
-        temp = pstrnone(temp)
-        if temp is None:
-            temp = Path.cwd().joinpath("temp")
-        temp.mkdir(exist_ok=True, parents=True)
+        temp = create_temp(temp)
         if skip_existing:
-            compiled = re.compile(image_regex)
-            skip: List[str] = [re.match(compiled, file.name).group(1) for file in temp.glob("*.png")]
+            skip = get_skip_files(file_regex, temp, "*.png")
         else:
-            skip = []
+            skip = set()
         
         pool_data = [
             (
@@ -218,7 +201,7 @@ class VideoDataInsertor(BaseDataInsertor):
             ffmpeg_opts = {}
         
         # Merge opts
-        use_opts = cls.DEFAULT_FFMPEG_OPTS.copy()
+        use_opts = constants.DEFAULT_FFMPEG_OPTS.copy()
         use_opts.update(ffmpeg_opts)
         use_opts = list(chain.from_iterable(use_opts.items()))
         
@@ -236,7 +219,7 @@ class VideoDataInsertor(BaseDataInsertor):
         cls.create_frames(data=data, temp=temp, **kwargs)
         
         # Create video
-        logging.info("The video will be created now, wait until it is finished.")
+        logging.warning("The video will be created now using ffmpeg, wait until it is finished before opening it!")
         
         process = subprocess.Popen([
             ffmpeg_location,
@@ -327,7 +310,7 @@ class FileDataInsertor(VideoDataInsertor):
             output: Optional[PathStr] = None,
             *,
             folder_glob: str = "*",
-            recursive: bool = False,
+            recursive: bool = True,
             **kwargs,
     ) -> str:
         # Constrain values
@@ -339,8 +322,8 @@ class FileDataInsertor(VideoDataInsertor):
         
         # Get values
         method = folder.rglob if recursive else folder.glob
-        
-        files = method(folder_glob)
+        # Folders don`t need to be encoded, because the path will be saved
+        files = {x for x in method(folder_glob) if x.is_file()}
         
         return cls.encode_multiple_files(
             files, output,

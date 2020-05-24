@@ -81,7 +81,7 @@ class FileDecoder(BaseDataDecoderInterface):
         return None
     
     def prompt_path(self, path: PathStr) -> Path:
-        string = input(f'"{self}" want`s to create a file with a relative path (relative path: "{str(path)}"). '
+        string = input(f'"{self}" wants to create a file with a relative path (relative path: "{str(path)}"). '
                        f'Please provide a base path, otherwise the current working directory (cwd) will be '
                        f'used. (You can skip this by providing the `base_path` variable)')
         base = self.validate_path(string)

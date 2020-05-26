@@ -266,11 +266,11 @@ class FileDataInsertor(VideoDataInsertor):
             **kwargs
     ) -> str:
         # Constrain values
-        targets: Iterator[Path] = map(lambda x: pstr(x), targets)
+        targets: List[Path] = list(map(lambda x: pstr(x), targets))
         
         # Collect data
         data = []
-        for target in targets:
+        for target in tqdm(targets, desc="Collection data", total=len(targets)):
             if target.is_dir():
                 temp = cls.encode_folder(target, **kwargs)
             else:

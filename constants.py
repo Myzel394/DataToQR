@@ -1,11 +1,12 @@
 import qrcode
 
-DELIMITER = ";"
+DELIMITER = ","
+FULL_DELIMITER = ";"
 BASE64_REGEX = "(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)"
 ENCODER_ID_REGEX = "[a-zA-Z]+"
 
-DATA_STRING = f"{{data}}{DELIMITER}{{information}}{DELIMITER}{{encoder.encoder_id}}{DELIMITER}"
-DATA_STRING_REVERSE = f"({BASE64_REGEX}){DELIMITER}({BASE64_REGEX}){DELIMITER}({ENCODER_ID_REGEX}){DELIMITER}"
+DATA_STRING = f"{{data}}{DELIMITER}{{information}}{DELIMITER}{{encoder.encoder_id}}{FULL_DELIMITER}"
+DATA_STRING_REVERSE = f"({BASE64_REGEX}){DELIMITER}({BASE64_REGEX}){DELIMITER}({ENCODER_ID_REGEX})"
 
 ACTION_WRITE = "write_file"
 ACTION_SHOW = "show"

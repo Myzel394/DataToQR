@@ -31,22 +31,7 @@ class BaseDataDecoderInterface:
 
 
 class FileDecoder(BaseDataDecoderInterface):
-    def handle_data(self, *, log: bool = False, ignore_perms: bool = False, base_path: Optional[PathStr] = None):
-        # Constrain values
-        path = self.information.get("path")
-        if path is None:
-            raise DecoderError(f'Path is missing in "{self}"')
-        path = Path(path)
-        encoding = self.information.get("encoding", "utf-8")
-        
-        # Permissions check
-        if not ignore_perms and path.exists():
-            # File already exists
-            if not prompt(
-                    f'"{self}" wants to create a file that already exists ("{path}"; absolute="{path.absolute()}"). '
-                    f'Do you want to proceed?'):
-                return
-        
+    def get_base_path(self, path: Path, ignore_perms: bool, base_path: Optional[PathStr] = None):
         if not path.is_absolute():
             # File is relative
             if base_path is not None:
@@ -61,10 +46,34 @@ class FileDecoder(BaseDataDecoderInterface):
         else:
             base = None
         
-        # Create file and write data
-        path.parent.mkdir(exist_ok=True, parents=True)
+        return path, base
+    
+    def write_action(self, path, **kwargs):
+        encoding = self.information.get("encoding", "utf-8")
+        
         with path.absolute().open("w", encoding=encoding) as file:
             file.write(self.data)
+    
+    def handle_data(self, *, log: bool = False, ignore_perms: bool = False, base_path: Optional[PathStr] = None):
+        # Constrain values
+        path = self.information.get("path")
+        if path is None:
+            raise DecoderError(f'Path is missing in "{self}"')
+        path = Path(path)
+        
+        # Permissions check
+        if not ignore_perms and path.exists():
+            # File already exists
+            if not prompt(
+                    f'"{self}" wants to create a file that already exists ("{path}"; absolute="{path.absolute()}"). '
+                    f'Do you want to proceed?'):
+                return
+        
+        path, base = self.get_base_path(path, ignore_perms, base_path)
+        path.parent.mkdir(exist_ok=True, parents=True)
+        
+        # Create file and write data
+        self.write_action(path, log=log, ignore_perms=ignore_perms, base_path=base_path)
         
         if log:
             if base is not None:
@@ -118,14 +127,8 @@ class BytesDecoder(FileDecoder):
     def get_data(raw: str) -> Any:
         return raw
     
-    def handle_data(self, *, encoding: str = "utf-8", log: bool = False):
+    def write_action(self, path, encoding: str = "utf-8", **kwargs):
         data = base64.b64decode(bytes(self.data, encoding))
-        
-        # Constrain values
-        path = self.information.get("path")
-        if path is None:
-            raise DecoderError(f'Path is missing in "{self}"')
-        path = Path(path)
         
         with path.open("wb") as file:
             file.write(data)

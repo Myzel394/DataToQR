@@ -84,12 +84,12 @@ def handle(**arguments):
         kwargs[key] = log
     
     if method == AVAILABLE_METHODS["HANDLE"]:
-        HandleDataExtractor.handle_video_instantly(video, **kwargs)
+        HandleDataExtractor.handle_video_instantly(video, skip_error=False, **kwargs)
     else:
         data = HandleDataExtractor.decode_video(video, **kwargs)
         
         if method == AVAILABLE_METHODS["DUMP"]:
-            DumpDataExtractor.dump_to_file(data, **kwargs)
+            DumpDataExtractor.dump_to_json(data, **kwargs)
         elif method == AVAILABLE_METHODS["REVIEW"]:
             file_key = "file"
             
@@ -98,7 +98,7 @@ def handle(**arguments):
             if (key := "minify") not in kwargs:
                 kwargs[key] = False
             
-            DumpDataExtractor.dump_to_file(data, **kwargs)
+            DumpDataExtractor.dump_to_json(data, **kwargs)
             
             os.startfile(kwargs[file_key])
 

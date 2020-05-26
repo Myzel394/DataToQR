@@ -151,3 +151,11 @@ def split_modulo(target: list, n: int) -> Tuple[List[list], list]:
                    for j in range(n)
                ] for i in range(0, len(modulo), n)
            ], remaining
+
+
+def rstrip_until(data: str, character: str) -> str:
+    for index in range(len(data), 0, -1):
+        if data[index:].startswith(character):
+            return data[:index + 1]
+    
+    raise ValueError(f'Character "{character}" not found in data "{data[:20]}"...!')

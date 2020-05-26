@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 __author__ = "Miguel Krasniqi"
 
-import base64
 import json
 import logging
 import re
@@ -16,8 +15,11 @@ from data.decoders import DecoderType
 from data.encoders import EncoderType
 from data.encoders_list import ALL_ENCODERS
 from exceptions import DecoderFailed
+from information import decode_information
 from typing_types import *
-from utils import pstr, pstrnone, split_modulo, split_nth
+from utils import pstr, pstrnone, rstrip_until, split_nth
+
+data_string_reverse_regex = re.compile(constants.DATA_STRING_REVERSE)
 
 
 class BaseDataExtractor:
@@ -39,7 +41,7 @@ class BaseDataExtractor:
                 return encoder
         
         raise DecoderFailed(
-            f'Couldn`t find the decoder for "{name}".... Try adding more encoders to `encoders`. If '
+            f'Couldn`t find the encoder for "{name}".... Try adding more encoders to `encoders`. If '
             f'you passed all encoders, the file might be broken.')
     
     @classmethod
@@ -48,8 +50,7 @@ class BaseDataExtractor:
         # Extract data
         encoded_data, encoded_information, encoder_string, _ = raw_package.split(constants.DELIMITER)
         data: str = encoded_data
-        json_information: str = base64.b64decode(encoded_information)
-        information: dict = json.loads(json_information)
+        information: JsonSerializable = decode_information(encoded_information)
         
         return data, information, encoder_string
     
@@ -105,7 +106,7 @@ class HandleDataExtractor(BaseDataExtractor):
     def handle_raw_data(cls, data: str, encoders: Iterable[EncoderType] = ALL_ENCODERS, **kwargs):
         """Handles raw, encoded data"""
         packed_data = cls.get_packages_from_raw(data, encoders=encoders)
-        cls.handle_packages_data(packed_data, **kwargs)
+        cls.handle_packed_data(packed_data, **kwargs)
     
     @staticmethod
     def handle_ready_data(data: str, information: JsonSerializable, decoder: DecoderType, **kwargs) -> None:
@@ -114,11 +115,9 @@ class HandleDataExtractor(BaseDataExtractor):
         instance.handle_data(**kwargs)
     
     @classmethod
-    def handle_packages_data(cls, data: Iterable[Dict[str, Any]], **kwargs) -> None:
+    def handle_packed_data(cls, packed: Iterable[Dict[str, Any]], **kwargs) -> None:
         """Handles packages. Also shows a tqdm progressbar"""
-        list_data = list(data)
-        
-        for single_data in list_data:
+        for single_data in packed:
             data, information, encoder = itemgetter("data", "information", "encoder")(single_data)
             cls.handle_ready_data(data, information, encoder.decoder, **kwargs)
     
@@ -159,7 +158,7 @@ class HandleDataExtractor(BaseDataExtractor):
                 "encoder": encoder
             })
         
-        cls.handle_packages_data(found, **kwargs)
+        cls.handle_packed_data(found, **kwargs)
     
     @staticmethod
     def decode_qr(opened_image) -> str:
@@ -194,6 +193,33 @@ class HandleDataExtractor(BaseDataExtractor):
         
         return "".join(found)
     
+    @staticmethod
+    def _split_partial_data(
+            data: str,
+            single_delimiter: str = constants.DELIMITER,
+            full_delimiter: str = constants.FULL_DELIMITER,
+            regex=data_string_reverse_regex
+    ) -> Tuple[List[List[str]], List[str]]:
+        found: List[List[str]] = []
+        remaining = []
+        
+        if not data.endswith(full_delimiter):
+            try:
+                temp = rstrip_until(data, full_delimiter)
+            except ValueError:
+                pass
+            else:
+                remaining.append(data[len(temp)])
+                data = temp
+        
+        for element in data.split(full_delimiter):
+            if regex.match(element):
+                found.append(element.split(single_delimiter))
+            else:
+                remaining.append(element)
+        
+        return found, remaining
+    
     @classmethod
     def handle_video_instantly(
             cls,
@@ -204,6 +230,10 @@ class HandleDataExtractor(BaseDataExtractor):
         """Decodes a video and handles instantly. If you want to decode a video and handle its data, use this. No
         data will be returned. Only works with like 95% of the data. I`m still searching for a solution, if you know
         one please tell me."""
+        
+        def handle_now(given_data: list):
+            cls.handle_raw_data(constants.DELIMITER.join(given_data) + constants.DELIMITER, **kwargs)
+        
         # Constrain values
         path = pstr(path)
         
@@ -218,18 +248,20 @@ class HandleDataExtractor(BaseDataExtractor):
             found.append(data)
             
             # Handle and reset
-            if len((split_data := "".join(found).split(constants.DELIMITER))) >= handle_every:
-                data_list, found = split_modulo(split_data, handle_every)
-                for data in data_list:
-                    try:
-                        cls.handle_raw_data(constants.DELIMITER.join(data) + constants.DELIMITER, **kwargs)
-                    except Exception as e:
-                        if skip_error:
-                            logging.warning("There was an error while handling some data. Original exception: " +
-                                            str(e))
-                            continue
-                        raise e
-                # Does somebody know how to handle this with multiprocessing?
+            use_data, new_found = cls._split_partial_data("".join(data))
+            for single_data in use_data:
+                try:
+                    handle_now(single_data)
+                except Exception as e:
+                    if skip_error:
+                        logging.warning(
+                            "There was an error while handling some data. Original exception: " + str(e)
+                        )
+                        continue
+                    raise e
+            found = [x + constants.FULL_DELIMITER for x in new_found]
+        
+        handle_now(found)
 
 
 class DumpDataExtractor(BaseDataExtractor):
@@ -266,7 +298,7 @@ class DumpDataExtractor(BaseDataExtractor):
         return json.dumps(object_data, **json_kwargs)
     
     @classmethod
-    def dump_to_file(
+    def dump_to_json(
             cls,
             data: Union[str, PackedDataTupleNotResolved, Dict[str, Any]],
             file: Optional[PathStr] = None,

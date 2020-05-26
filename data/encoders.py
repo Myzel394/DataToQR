@@ -2,7 +2,6 @@
 __author__ = "Miguel Krasniqi"
 
 import base64
-import json
 import re
 from fnmatch import fnmatch
 
@@ -12,6 +11,7 @@ import constants
 from checks import is_base64, is_json_serializable
 from data.decoders import BytesDecoder, FileDecoder, TextDecoder
 from exceptions import EncoderError
+from information import encode_information
 from typing_types import *
 from utils import pstrnone
 
@@ -45,11 +45,9 @@ class BaseDataEncoderInterface:
         if not is_json_serializable(information):
             raise EncoderError(f'The passed `information` is not json serializable!')
         
-        json_data = json.dumps(information, separators=(',', ':'))
-        information_data = self.encode_string(json_data)
+        information_data = encode_information(information)
         
         full_data = constants.DATA_STRING.format(data=encoded_value, information=information_data, encoder=self)
-        
         return full_data
     
     def get_information(self, **opts) -> JsonSerializable:
@@ -154,6 +152,16 @@ class BytesEncoder(FileEncoder):
         
         data = base64.b64encode(data)
         return data.decode(data_encoding)
+
+
+class FileSplitEncoder(FileDecoder):
+    """
+    Splits a file into smaller parts when it exceeds a limit and encodes the parts. Otherwise default FileEncoder will
+    be used.
+    """
+    
+    def encode(self, file_encoding: str = "utf-8"):
+        pass
 
 
 EncoderType = Type[BaseDataEncoderInterface]

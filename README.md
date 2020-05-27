@@ -1,9 +1,9 @@
-#What is DataToQR?
+# What is DataToQR?
 DataToQR allowes you to transform data into a video of QR-Codes, which you then can decode later.
 
 I got the idea from a comment by "Amanda Capsicum" on this Youtube video: https://youtu.be/y2F0wjoKEhg.
 
-#How to use this?
+# How to use this?
 You can use the `qr_encoder.py` and `qr_decoder` to encode and decode data
 in the console. The other files can be used as a library, you can check
 docstrings for documentation and help.
@@ -11,16 +11,16 @@ docstrings for documentation and help.
 The temp folder DOES NOT get automatically deleted! You have to
 manually delete it or set `clear_temp=True`!
 
-##CMD Usage
+## CMD Usage
 Files, folders or multiple files (separated with space) can be encoded by using 
 `qr_encoder.py`. Relative and absolute paths are supported. If you want to
 pass kwargs, you have to create a `.json` file with the given kwargs
 in it and pass it.
-###Documentation
+### Documentation
 See `qr_encoder --help` for documentation.
 
-###Examples
-####Encoding
+### Examples
+#### Encoding
 Encode a single file:
 ```commandline
 qr_encoder file.txt
@@ -50,7 +50,7 @@ Input:
 ```commandline
 qr_encoder file.txt -o video/qr.avi -k kwargs.json
 ```
-####Decoding
+#### Decoding
 Decode a video:
 ```commandline
 qr_decoder qr_data.avi
@@ -79,8 +79,8 @@ Input:
 qr_decoder qr_data.avi -k kwargs.json
 ```
 ---
-##Python Usage
-###Documentation
+## Python Usage
+### Documentation
 There are documentation strings for most of the classes, methods and
 functions. A generic documentation will be added later.
 
@@ -93,7 +93,7 @@ In a nutshell:
 | decode...    	| Just decodes and does not handle                   	|
 | handle...    	| Handles the given decoded data                     	|
 
-###Examples
+### Examples
 ```python
 from encode import FileDataInsertor
 
@@ -109,13 +109,13 @@ if __name__ == "__main__":  # <-- IMPORTANT !!!
     FileDataInsertor.create_video(data)
 ```
 
-#How does this work?
-##Encoding
+# How does this work?
+## Encoding
 The encoding works in four steps:
 1. Collect data
 3. Split data & create QR-Code images
 4. Create a video from the images
-###Collect data
+### Collect data
 Data collection works in two steps:
 1. Collect actual data
 2. Collect information about the data
@@ -133,11 +133,11 @@ The collected data follows this scheme:
 ```
 <actual data in base64><delimiter><JSON information in base64><delimiter><encoder id><package_delimiter>
 ```
-###Split data & create QR-Code images
+### Split data & create QR-Code images
 The data will be split into smaller parts so a QR-Code can be generated.
 The QR-Code images will be saved in a temporary folder.
-###Create a video from the images
+### Create a video from the images
 The QR-Code images will be put to a video using `ffmpeg`.
-##Decoding
+## Decoding
 The decoding process simply reads the QR-Codes from the video and handles 
 them using the associated decoder.

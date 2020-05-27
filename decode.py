@@ -4,6 +4,8 @@ __author__ = "Miguel Krasniqi"
 import json
 import logging
 import re
+from functools import partial
+from multiprocessing import Pool
 from operator import itemgetter
 
 from cv2.cv2 import CAP_PROP_FRAME_COUNT, VideoCapture
@@ -17,7 +19,7 @@ from data.encoders_list import ALL_ENCODERS
 from exceptions import DecoderFailed
 from information import decode_information
 from typing_types import *
-from utils import pstr, pstrnone, rstrip_until, split_nth
+from utils import constrain_cap, get_threads, pstr, pstrnone
 
 data_string_reverse_regex = re.compile(constants.DATA_STRING_REVERSE)
 
@@ -48,7 +50,10 @@ class BaseDataExtractor:
     def extract_package(cls, raw_package: str) -> PackedDataTupleNotResolved:
         """Extracts a raw_package into packed data"""
         # Extract data
-        encoded_data, encoded_information, encoder_string, _ = raw_package.split(constants.DELIMITER)
+        if raw_package.endswith(remove := constants.DELIMITER):
+            raw_package = raw_package.rstrip(remove)
+        
+        encoded_data, encoded_information, encoder_string = raw_package.split(constants.DELIMITER)
         data: str = encoded_data
         information: JsonSerializable = decode_information(encoded_information)
         
@@ -60,12 +65,11 @@ class BaseDataExtractor:
         Yields raw data to packed data.
         :param raw: The raw data
         """
-        for package in split_nth(
-                raw,
-                constants.DELIMITER,
-                re.compile(constants.DATA_STRING_REVERSE).groups,
-                True
-        ):
+        # Ignore last split because it`s empty
+        if raw.endswith((remove := constants.FULL_DELIMITER)):
+            raw = raw.rstrip(remove)
+        
+        for package in raw.split(constants.FULL_DELIMITER):
             yield cls.extract_package(package)
     
     @classmethod
@@ -185,13 +189,13 @@ class HandleDataExtractor(BaseDataExtractor):
         # Video
         cap = VideoCapture(str(path))
         frames = int(cap.get(CAP_PROP_FRAME_COUNT))
-        found: List[str] = []
+        found: str = ""
         
         for frame in tqdm(cls._get_video_frames(cap), desc="Reading video", total=frames):
             data = cls.decode_qr(frame)
-            found.append(data)
+            found += data
         
-        return "".join(found)
+        return found
     
     @staticmethod
     def _split_partial_data(
@@ -199,18 +203,19 @@ class HandleDataExtractor(BaseDataExtractor):
             single_delimiter: str = constants.DELIMITER,
             full_delimiter: str = constants.FULL_DELIMITER,
             regex=data_string_reverse_regex
-    ) -> Tuple[List[List[str]], List[str]]:
-        found: List[List[str]] = []
+    ) -> Tuple[DataList, List[str]]:
+        found: DataList = []
         remaining = []
         
         if not data.endswith(full_delimiter):
-            try:
-                temp = rstrip_until(data, full_delimiter)
-            except ValueError:
-                pass
+            # If there`s a packed dataset in the data, remove the partial loaded data at the end
+            if full_delimiter in data:
+                index = data.rfind(full_delimiter)
+                temp = data[:index]
             else:
-                remaining.append(data[len(temp)])
-                data = temp
+                temp = ""
+            remaining.append(data[len(temp):])
+            data = temp
         
         for element in data.split(full_delimiter):
             if regex.match(element):
@@ -221,47 +226,98 @@ class HandleDataExtractor(BaseDataExtractor):
         return found, remaining
     
     @classmethod
-    def handle_video_instantly(
+    def decode_video_instantly(
             cls,
-            path: PathStr,
-            skip_error: bool = True,
-            **kwargs
-    ) -> None:
-        """Decodes a video and handles instantly. If you want to decode a video and handle its data, use this. No
-        data will be returned. Only works with like 95% of the data. I`m still searching for a solution, if you know
-        one please tell me."""
+            *,
+            video: Optional[PathStr] = None,
+            packed_data_only: bool = True,
+            cap: Optional[VideoCapture] = None,
+    ) -> Generator[Union[PackedDataTuple, str], str, None]:
+        """
+        Decodes a video and yields packed data instantly.
         
+        :param video: Optional. Path to the video.
+        :param packed_data_only: Whether only ready-to-use packed data should be yield.
+        :param cap: Optional. VideoCapture instance, if None, one will be created based on `video` path.
+        :return: None
+        """
+        
+        def yield_data(ready, value: str):
+            if packed_data_only:
+                return ready
+            else:
+                return value
+        
+        # Constrain values
+        cap = constrain_cap(video, cap)
+        
+        found: str = ""
+        
+        # Iterate over all frames and decode its data. Then get the ready-to-use data and the partial loaded data.
+        # Yield the ready-to-use data if `packed_data_only` is True, otherwise yield the raw found data so far.
+        for frame in cls._get_video_frames(cap):
+            # Get data
+            data = cls.decode_qr(frame)
+            found += data
+            
+            # Get ready-to-use and partial loaded data
+            ready_data, new_found = cls._split_partial_data(found)
+            yield yield_data(ready_data, found)
+            found = "".join(new_found)
+        
+        yield yield_data(cls._split_partial_data(found)[0], found)
+    
+    @classmethod
+    def _handle_video_instantly_thread(cls, data_list: DataList, skip_error: bool = True, **kwargs):
         def handle_now(given_data: list):
             cls.handle_raw_data(constants.DELIMITER.join(given_data) + constants.DELIMITER, **kwargs)
         
+        for data in data_list:
+            try:
+                handle_now(data)
+            except Exception as e:
+                if skip_error:
+                    logging.warning(
+                        "There was an error while handling some data. Original exception: " + str(e)
+                    )
+                else:
+                    raise e
+    
+    @classmethod
+    def handle_video_instantly(
+            cls,
+            video: Optional[PathStr] = None,
+            *,
+            skip_error: bool = True,
+            cap: Optional[VideoCapture] = None,
+            threads: Optional[int] = None,
+            **kwargs
+    ) -> None:
+        """Decodes a video and handles instantly. If you want to decode a video and handle its data, use this. No
+        data will be returned."""
+        
         # Constrain values
-        path = pstr(path)
+        cap = constrain_cap(video, cap)
+        threads = get_threads(threads)
         
         # Video
-        cap = VideoCapture(str(path))
         frames = int(cap.get(CAP_PROP_FRAME_COUNT))
-        handle_every = re.compile(constants.DATA_STRING_REVERSE).groups
-        found: List[str] = []
         
-        for frame in tqdm(cls._get_video_frames(cap), desc="Handling video", total=frames):
-            data = cls.decode_qr(frame)
-            found.append(data)
-            
-            # Handle and reset
-            use_data, new_found = cls._split_partial_data("".join(data))
-            for single_data in use_data:
-                try:
-                    handle_now(single_data)
-                except Exception as e:
-                    if skip_error:
-                        logging.warning(
-                            "There was an error while handling some data. Original exception: " + str(e)
-                        )
-                        continue
-                    raise e
-            found = [x + constants.FULL_DELIMITER for x in new_found]
-        
-        handle_now(found)
+        with Pool(threads) as pool:
+            # Arguments pass method by: https://stackoverflow.com/a/39366868/9878135
+            list(
+                tqdm(
+                    pool.imap(
+                        partial(cls._handle_video_instantly_thread, **{
+                            "skip_error": skip_error,
+                            **kwargs
+                        }),
+                        cls.decode_video_instantly(cap=cap)
+                    ),
+                    desc="Handling video",
+                    total=frames
+                )
+            )
 
 
 class DumpDataExtractor(BaseDataExtractor):

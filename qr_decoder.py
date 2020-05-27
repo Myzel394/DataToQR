@@ -58,9 +58,6 @@ def parse_parser(parser: argparse.ArgumentParser) -> Kwargs:
     else:
         kwargs = {}
     
-    if (key := "base_path") not in kwargs:
-        kwargs[key] = Path.cwd()
-    
     video = Path(args["video"])
     
     if not video.exists():
@@ -84,9 +81,12 @@ def handle(**arguments):
         kwargs[key] = log
     
     if method == AVAILABLE_METHODS["HANDLE"]:
+        if (key := "base_path") not in kwargs:
+            kwargs[key] = Path.cwd()
+        
         HandleDataExtractor.handle_video_instantly(video, skip_error=False, **kwargs)
     else:
-        data = HandleDataExtractor.decode_video(video, **kwargs)
+        data = HandleDataExtractor.decode_video(video)
         
         if method == AVAILABLE_METHODS["DUMP"]:
             DumpDataExtractor.dump_to_json(data, **kwargs)

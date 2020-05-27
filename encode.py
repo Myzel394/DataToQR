@@ -269,16 +269,13 @@ class FileDataInsertor(VideoDataInsertor):
         targets: List[Path] = list(map(lambda x: pstr(x), targets))
         
         # Collect data
-        data = []
-        for target in tqdm(targets, desc="Collection data", total=len(targets)):
+        data: str = ""
+        for target in tqdm(targets, desc="Collecting data", total=len(targets)):
             if target.is_dir():
-                temp = cls.encode_folder(target, **kwargs)
+                files = {x for x in target.rglob("*/*") if x.is_file()}
+                data += "".join(list(cls.collect_data_from_files(files, **kwargs)))
             else:
-                temp = cls.encode_file(target, **kwargs)
-            
-            data.append(temp)
-        
-        data = "".join(data)
+                data += cls.get_encoded_data(target, **kwargs)
         
         cls.create_video(data, output)
         
@@ -310,7 +307,6 @@ class FileDataInsertor(VideoDataInsertor):
             output: Optional[PathStr] = None,
             *,
             folder_glob: str = "*",
-            recursive: bool = True,
             **kwargs,
     ) -> str:
         # Constrain values
@@ -321,9 +317,8 @@ class FileDataInsertor(VideoDataInsertor):
             information_opts[key] = folder.parent.absolute()
         
         # Get values
-        method = folder.rglob if recursive else folder.glob
         # Folders don`t need to be encoded, because the path will be saved
-        files = {x for x in method(folder_glob) if x.is_file()}
+        files = {x for x in folder.glob(folder_glob) if x.is_file()}
         
         return cls.encode_multiple_files(
             files, output,

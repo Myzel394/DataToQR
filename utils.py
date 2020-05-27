@@ -3,6 +3,8 @@ import re
 from pathlib import Path, PurePath
 from typing import *
 
+from cv2.cv2 import VideoCapture
+
 from typing_types import Kwargs, PathStr, SimpleBuiltinTypes
 
 
@@ -155,7 +157,15 @@ def split_modulo(target: list, n: int) -> Tuple[List[list], list]:
 
 def rstrip_until(data: str, character: str) -> str:
     for index in range(len(data), 0, -1):
-        if data[index:].startswith(character):
-            return data[:index + 1]
+        if data[index] == character:
+            return data[:index]
     
     raise ValueError(f'Character "{character}" not found in data "{data[:20]}"...!')
+
+
+def constrain_cap(video: Optional[PathStr] = None, cap: Optional[VideoCapture] = None) -> VideoCapture:
+    if video is not None:
+        return VideoCapture(str(pstr(video)))
+    if isinstance(cap, VideoCapture):
+        return cap
+    raise ValueError(f'Either a video path or a `{VideoCapture.__name__}` instance must be passed!')

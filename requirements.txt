@@ -1,3 +1,7 @@
 qrcode
 pyzbar
-ffmpeg-python
+tqdm
+Pillow
+python-magic
+python-magic-bin
+opencv-python

@@ -170,7 +170,7 @@ class VideoDataInsertor(BaseDataInsertor):
             temp: Optional[PathStr] = None,
             clear_temp: bool = False,
             
-            ffmpeg_location: Path = Path("C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe"),
+            ffmpeg_location: Path = Path("ffmpeg"),
             ffmpeg_opts: Optional[dict] = None,
             
             **kwargs,

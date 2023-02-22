@@ -1,3 +1,8 @@
+# DO NOT USE THIS
+
+This project is not maintained at all - Use https://github.com/DvorakDwarf/Infinite-Storage-Glitch instead
+
+
 # What is DataToQR?
 DataToQR allowes you to transform data into a video of QR-Codes, which you then can decode later.
 
